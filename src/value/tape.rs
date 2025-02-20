@@ -2,6 +2,8 @@
 /// can be used without further computation.
 use value_trait::{base::TypedValue as _, StaticNode, TryTypeError, ValueType};
 
+use crate::{Buffers, Deserializer};
+
 pub(super) mod array;
 mod cmp;
 pub(super) mod object;
@@ -24,6 +26,36 @@ impl<'input> Tape<'input> {
         Self(vec![Node::Static(StaticNode::Null)])
     }
 
+    /// Creates a tape from a mutable slice of bytes
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if `s` is invalid JSON.
+    pub fn from_slice(input: &'input mut [u8]) -> crate::Result<Self> {
+        let len = input.len();
+
+        let mut buffer = Buffers::new(len);
+
+        Self::from_slice_with_buffers(input, &mut buffer)
+    }
+
+    /// Creates a tape from a mutable slice of bytes using a temporary
+    /// buffer for strings for them to be copied in and out if needed
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if `s` is invalid JSON.
+    pub fn from_slice_with_buffers(
+        input: &'input mut [u8],
+        buffer: &mut Buffers,
+    ) -> crate::Result<Self> {
+        let mut tape: Vec<Node<'input>> = Vec::with_capacity(buffer.structural_indexes.len());
+
+        Deserializer::fill_tape(input, buffer, &mut tape)?;
+
+        Ok(Self(tape))
+    }
+
     /// Clears the tape and returns it with a new lifetime to allow re-using the already
     /// allocated buffer.
     #[must_use]
@@ -34,22 +66,20 @@ impl<'input> Tape<'input> {
         unsafe { std::mem::transmute(self) }
     }
 
+    /// Initializes a [`Deserializer`] from the tape.
+    pub fn deserializer(&self) -> Deserializer<'_, 'input> {
+        self.as_value().deserializer()
+    }
+
     /// Deserializes the tape into a type that implements `serde::Deserialize`
     /// # Errors
     /// Returns an error if the deserialization fails
     #[cfg(feature = "serde")]
-    pub fn deserialize<T>(self) -> crate::Result<T>
+    pub fn deserialize<T>(&self) -> crate::Result<T>
     where
         T: serde::Deserialize<'input>,
     {
-        use crate::Deserializer;
-
-        let mut deserializer = Deserializer {
-            tape: self.0,
-            idx: 0,
-        };
-
-        T::deserialize(&mut deserializer)
+        self.as_value().deserialize()
     }
 }
 
@@ -68,6 +98,27 @@ impl Value<'static, 'static> {
     #[must_use]
     pub const fn null() -> Self {
         Self::NULL
+    }
+}
+
+impl<'tape, 'input> Value<'tape, 'input> {
+    /// Initializes a [`Deserializer`] from the value.
+    pub fn deserializer(self) -> Deserializer<'tape, 'input> {
+        Deserializer {
+            tape: self.0,
+            idx: 0,
+        }
+    }
+
+    /// Deserializes the value into a type that implements `serde::Deserialize`
+    /// # Errors
+    /// Returns an error if the deserialization fails
+    #[cfg(feature = "serde")]
+    pub fn deserialize<T>(self) -> crate::Result<T>
+    where
+        T: serde::Deserialize<'input>,
+    {
+        T::deserialize(&mut self.deserializer())
     }
 }
 

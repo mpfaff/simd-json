@@ -25,7 +25,7 @@ mod serialize;
 
 use super::ObjectHasher;
 use crate::{prelude::*, Buffers};
-use crate::{Deserializer, Node, Result};
+use crate::{Deserializer, Node, Result, Tape};
 use halfbrown::HashMap;
 use std::fmt;
 use std::ops::{Index, IndexMut};
@@ -44,8 +44,8 @@ pub type Object = HashMap<String, Value, ObjectHasher>;
 ///
 /// Will return `Err` if `s` is invalid JSON.
 pub fn to_value(s: &mut [u8]) -> Result<Value> {
-    match Deserializer::from_slice(s) {
-        Ok(de) => Ok(OwnedDeserializer::from_deserializer(de).parse()),
+    match Tape::from_slice(s) {
+        Ok(tape) => Ok(OwnedDeserializer::from_deserializer(tape.deserializer()).parse()),
         Err(e) => Err(e),
     }
 }
@@ -63,8 +63,8 @@ pub fn to_value(s: &mut [u8]) -> Result<Value> {
 ///
 /// Will return `Err` if `s` is invalid JSON.
 pub fn to_value_with_buffers(s: &mut [u8], buffers: &mut Buffers) -> Result<Value> {
-    match Deserializer::from_slice_with_buffers(s, buffers) {
-        Ok(de) => Ok(OwnedDeserializer::from_deserializer(de).parse()),
+    match Tape::from_slice_with_buffers(s, buffers) {
+        Ok(tape) => Ok(OwnedDeserializer::from_deserializer(tape.deserializer()).parse()),
         Err(e) => Err(e),
     }
 }
@@ -317,12 +317,12 @@ impl Default for Value {
     }
 }
 
-struct OwnedDeserializer<'de> {
-    de: Deserializer<'de>,
+struct OwnedDeserializer<'tape, 'de> {
+    de: Deserializer<'tape, 'de>,
 }
 
-impl<'de> OwnedDeserializer<'de> {
-    pub fn from_deserializer(de: Deserializer<'de>) -> Self {
+impl<'tape, 'de> OwnedDeserializer<'tape, 'de> {
+    pub fn from_deserializer(de: Deserializer<'tape, 'de>) -> Self {
         Self { de }
     }
     #[cfg_attr(not(feature = "no-inline"), inline)]

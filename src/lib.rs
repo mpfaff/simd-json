@@ -116,7 +116,7 @@ impl Buffers {
 /// Will return `Err` if `s` is invalid JSON.
 #[cfg_attr(not(feature = "no-inline"), inline)]
 pub fn to_tape(s: &mut [u8]) -> Result<Tape> {
-    Deserializer::from_slice(s).map(Deserializer::into_tape)
+    Tape::from_slice(s)
 }
 
 /// Creates a tape from the input for later consumption
@@ -125,7 +125,7 @@ pub fn to_tape(s: &mut [u8]) -> Result<Tape> {
 /// Will return `Err` if `s` is invalid JSON.
 #[cfg_attr(not(feature = "no-inline"), inline)]
 pub fn to_tape_with_buffers<'de>(s: &'de mut [u8], buffers: &mut Buffers) -> Result<Tape<'de>> {
-    Deserializer::from_slice_with_buffers(s, buffers).map(Deserializer::into_tape)
+    Tape::from_slice_with_buffers(s, buffers)
 }
 
 /// Fills a already existing tape from the input for later consumption
@@ -281,11 +281,11 @@ pub(crate) trait Stage1Parse {
 }
 
 /// Deserializer struct to deserialize a JSON
-#[derive(Debug)]
-pub struct Deserializer<'de> {
+#[derive(Debug, Clone)]
+pub struct Deserializer<'a, 'de> {
     // Note: we use the 2nd part as both index and length since only one is ever
     // used (array / object use len) everything else uses idx
-    pub(crate) tape: Vec<Node<'de>>,
+    pub(crate) tape: &'a [Node<'de>],
     idx: usize,
 }
 
@@ -361,7 +361,7 @@ impl std::fmt::Display for Implementation {
     }
 }
 
-impl<'de> Deserializer<'de> {
+impl<'a, 'de> Deserializer<'a, 'de> {
     /// returns the algorithm / architecture used by the deserializer
     #[cfg(all(
         feature = "runtime-detection",
@@ -442,7 +442,7 @@ impl<'de> Deserializer<'de> {
     }
 }
 
-impl<'de> Deserializer<'de> {
+impl<'a, 'de> Deserializer<'a, 'de> {
     #[cfg_attr(not(feature = "no-inline"), inline)]
     #[cfg(all(
         feature = "runtime-detection",
@@ -592,7 +592,7 @@ impl<'de> Deserializer<'de> {
 }
 
 /// architecture dependant `find_structural_bits`
-impl<'de> Deserializer<'de> {
+impl<'a, 'de> Deserializer<'a, 'de> {
     #[cfg_attr(not(feature = "no-inline"), inline)]
     #[cfg(all(
         feature = "runtime-detection",
@@ -716,18 +716,12 @@ impl<'de> Deserializer<'de> {
     }
 }
 
-impl<'de> Deserializer<'de> {
-    /// Extracts the tape from the Deserializer
-    #[must_use]
-    pub fn into_tape(self) -> Tape<'de> {
-        Tape(self.tape)
-    }
-
+impl<'tape, 'de> Deserializer<'tape, 'de> {
     /// Gives a `Value` view of the tape in the Deserializer
     #[must_use]
-    pub fn as_value(&self) -> Value<'_, 'de> {
+    pub fn as_value(&self) -> Value<'tape, 'de> {
         // Skip initial zero
-        Value(&self.tape)
+        Value(self.tape)
     }
 
     /// Resets the Deserializer tape index to 0
@@ -744,19 +738,6 @@ impl<'de> Deserializer<'de> {
     #[cfg_attr(not(feature = "no-inline"), inline)]
     fn error_c(idx: usize, c: char, error: ErrorType) -> Error {
         Error::new(idx, Some(c), error)
-    }
-
-    /// Creates a serializer from a mutable slice of bytes
-    ///
-    /// # Errors
-    ///
-    /// Will return `Err` if `s` is invalid JSON.
-    pub fn from_slice(input: &'de mut [u8]) -> Result<Self> {
-        let len = input.len();
-
-        let mut buffer = Buffers::new(len);
-
-        Self::from_slice_with_buffers(input, &mut buffer)
     }
 
     /// Fills the tape without creating a serializer, this function poses
@@ -820,20 +801,6 @@ impl<'de> Deserializer<'de> {
             &mut buffer.stage2_stack,
             tape,
         )
-    }
-
-    /// Creates a serializer from a mutable slice of bytes using a temporary
-    /// buffer for strings for them to be copied in and out if needed
-    ///
-    /// # Errors
-    ///
-    /// Will return `Err` if `s` is invalid JSON.
-    pub fn from_slice_with_buffers(input: &'de mut [u8], buffer: &mut Buffers) -> Result<Self> {
-        let mut tape: Vec<Node<'de>> = Vec::with_capacity(buffer.structural_indexes.len());
-
-        Self::fill_tape(input, buffer, &mut tape)?;
-
-        Ok(Self { tape, idx: 0 })
     }
 
     #[cfg(feature = "serde_impl")]
@@ -1093,7 +1060,7 @@ impl DerefMut for AlignedBuf {
 #[cfg(feature = "serde_impl")] //since the tested features are there to help work better with serde ...
 #[cfg(test)]
 mod tests {
-    use crate::Deserializer;
+    use crate::Tape;
     use serde_ext::Deserialize;
 
     static JSON: &str = r#"{
@@ -1122,7 +1089,8 @@ mod tests {
     #[test]
     fn test_deser_to_value() {
         let mut json = JSON.as_bytes().to_vec();
-        let d = Deserializer::from_slice(&mut json).expect("Invalid JSON");
+        let tape = Tape::from_slice(&mut json).expect("Invalid JSON");
+        let d = tape.deserializer();
 
         let original_index = d.idx;
         let original_nodes = d.tape.len();
@@ -1152,7 +1120,8 @@ mod tests {
     #[test]
     fn test_deser_restart() {
         let mut json = JSON.as_bytes().to_vec();
-        let mut d = Deserializer::from_slice(&mut json).expect("Invalid JSON");
+        let tape = Tape::from_slice(&mut json).expect("Invalid JSON");
+        let mut d = tape.deserializer();
 
         let original_index = d.idx;
         let original_nodes = d.tape.len();

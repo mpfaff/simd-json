@@ -27,7 +27,7 @@ mod serialize;
 use super::ObjectHasher;
 use crate::{cow::Cow, safer_unchecked::GetSaferUnchecked as _};
 use crate::{prelude::*, Buffers};
-use crate::{Deserializer, Node, Result};
+use crate::{Deserializer, Node, Result, Tape};
 use halfbrown::HashMap;
 use std::fmt;
 use std::ops::{Index, IndexMut};
@@ -47,8 +47,8 @@ pub type Array<'value> = Vec<Value<'value>>;
 ///
 /// Will return `Err` if `s` is invalid JSON.
 pub fn to_value(s: &mut [u8]) -> Result<Value> {
-    match Deserializer::from_slice(s) {
-        Ok(de) => Ok(BorrowDeserializer::from_deserializer(de).parse()),
+    match Tape::from_slice(s) {
+        Ok(tape) => Ok(BorrowDeserializer::from_deserializer(tape.deserializer()).parse()),
         Err(e) => Err(e),
     }
 }
@@ -68,8 +68,8 @@ pub fn to_value_with_buffers<'value>(
     s: &'value mut [u8],
     buffers: &mut Buffers,
 ) -> Result<Value<'value>> {
-    match Deserializer::from_slice_with_buffers(s, buffers) {
-        Ok(de) => Ok(BorrowDeserializer::from_deserializer(de).parse()),
+    match Tape::from_slice_with_buffers(s, buffers) {
+        Ok(tape) => Ok(BorrowDeserializer::from_deserializer(tape.deserializer()).parse()),
         Err(e) => Err(e),
     }
 }
@@ -405,10 +405,10 @@ impl<'value> Default for Value<'value> {
     }
 }
 
-pub(super) struct BorrowDeserializer<'de>(Deserializer<'de>);
+pub(super) struct BorrowDeserializer<'tape, 'de>(Deserializer<'tape, 'de>);
 
-impl<'de> BorrowDeserializer<'de> {
-    pub fn from_deserializer(de: Deserializer<'de>) -> Self {
+impl<'tape, 'de> BorrowDeserializer<'tape, 'de> {
+    pub fn from_deserializer(de: Deserializer<'tape, 'de>) -> Self {
         Self(de)
     }
 

@@ -11,7 +11,7 @@ mod se;
 mod value;
 pub use self::se::*;
 pub use self::value::*;
-use crate::{stry, Buffers, Deserializer, Error, ErrorType, Node, Result};
+use crate::{stry, Buffers, Deserializer, Error, ErrorType, Node, Result, Tape};
 use crate::{BorrowedValue, OwnedValue};
 use serde::de::DeserializeOwned;
 use serde_ext::Deserialize;
@@ -57,8 +57,8 @@ pub fn from_slice<'a, T>(s: &'a mut [u8]) -> Result<T>
 where
     T: Deserialize<'a>,
 {
-    let mut deserializer = stry!(Deserializer::from_slice(s));
-    T::deserialize(&mut deserializer)
+    let tape = stry!(Tape::from_slice(s));
+    T::deserialize(&mut tape.deserializer())
 }
 
 /// Parses a byte slice using a serde deserializer.
@@ -74,8 +74,8 @@ pub fn from_slice_with_buffers<'a, T>(s: &'a mut [u8], buffers: &mut Buffers) ->
 where
     T: Deserialize<'a>,
 {
-    let mut deserializer = stry!(Deserializer::from_slice_with_buffers(s, buffers));
-    T::deserialize(&mut deserializer)
+    let tape = stry!(Tape::from_slice_with_buffers(s, buffers));
+    T::deserialize(&mut tape.deserializer())
 }
 
 /// Parses a str using a serde deserializer.
@@ -98,9 +98,9 @@ pub unsafe fn from_str<'a, T>(s: &'a mut str) -> Result<T>
 where
     T: Deserialize<'a>,
 {
-    let mut deserializer = stry!(Deserializer::from_slice(unsafe { s.as_bytes_mut() }));
+    let tape = stry!(Tape::from_slice(unsafe { s.as_bytes_mut() }));
 
-    T::deserialize(&mut deserializer)
+    T::deserialize(&mut tape.deserializer())
 }
 
 /// Parses a str using a serde deserializer.
@@ -125,12 +125,12 @@ pub unsafe fn from_str_with_buffers<'a, T>(s: &'a mut str, buffers: &mut Buffers
 where
     T: Deserialize<'a>,
 {
-    let mut deserializer = stry!(Deserializer::from_slice_with_buffers(
+    let tape = stry!(Tape::from_slice_with_buffers(
         unsafe { s.as_bytes_mut() },
         buffers
     ));
 
-    T::deserialize(&mut deserializer)
+    T::deserialize(&mut tape.deserializer())
 }
 
 /// parses a Reader using a serde deserializer.
@@ -149,8 +149,8 @@ where
     if let Err(e) = rdr.read_to_end(&mut data) {
         return Err(Error::generic(ErrorType::Io(e)));
     };
-    let mut deserializer = stry!(Deserializer::from_slice(&mut data));
-    T::deserialize(&mut deserializer)
+    let tape = stry!(Tape::from_slice(&mut data));
+    T::deserialize(&mut tape.deserializer())
 }
 
 /// Parses a Reader using a serde deserializer.
@@ -171,8 +171,8 @@ where
     if let Err(e) = rdr.read_to_end(&mut data) {
         return Err(Error::generic(ErrorType::Io(e)));
     };
-    let mut deserializer = stry!(Deserializer::from_slice_with_buffers(&mut data, buffers));
-    T::deserialize(&mut deserializer)
+    let tape = stry!(Tape::from_slice_with_buffers(&mut data, buffers));
+    T::deserialize(&mut tape.deserializer())
 }
 
 impl serde::de::Error for Error {
@@ -188,7 +188,7 @@ impl serde_ext::ser::Error for Error {
 }
 
 // Functions purely used by serde
-impl<'de> Deserializer<'de> {
+impl<'tape, 'de> Deserializer<'tape, 'de> {
     #[cfg_attr(not(feature = "no-inline"), inline)]
     fn next(&mut self) -> Result<Node<'de>> {
         let r = self

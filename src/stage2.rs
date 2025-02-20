@@ -89,7 +89,7 @@ pub(crate) enum StackState {
     Array { last_start: usize, cnt: usize },
 }
 
-impl<'de> Deserializer<'de> {
+impl<'a, 'de> Deserializer<'a, 'de> {
     #[cfg_attr(not(feature = "no-inline"), inline)]
     #[allow(clippy::cognitive_complexity, clippy::too_many_lines, unused_unsafe)]
     pub(crate) fn build_tape(

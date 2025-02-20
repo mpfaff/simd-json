@@ -68,7 +68,7 @@ pub use self::owned::{
     to_value as to_owned_value, to_value_with_buffers as to_owned_value_with_buffers,
     Value as OwnedValue,
 };
-use crate::{Buffers, Deserializer, Result};
+use crate::{Buffers, Deserializer, Result, Tape};
 use halfbrown::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -96,8 +96,8 @@ where
     Value: ValueBuilder<'de> + From<Vec<Value>> + From<HashMap<Key, Value, ObjectHasher>> + 'de,
     Key: Hash + Eq + From<&'de str>,
 {
-    match Deserializer::from_slice(s) {
-        Ok(de) => Ok(ValueDeserializer::from_deserializer(de).parse()),
+    match Tape::from_slice(s) {
+        Ok(tape) => Ok(ValueDeserializer::from_deserializer(tape.deserializer()).parse()),
         Err(e) => Err(e),
     }
 }
@@ -121,22 +121,22 @@ where
     Value: ValueBuilder<'de> + From<Vec<Value>> + From<HashMap<Key, Value, ObjectHasher>> + 'de,
     Key: Hash + Eq + From<&'de str>,
 {
-    match Deserializer::from_slice_with_buffers(s, buffers) {
-        Ok(de) => Ok(ValueDeserializer::from_deserializer(de).parse()),
+    match Tape::from_slice_with_buffers(s, buffers) {
+        Ok(tape) => Ok(ValueDeserializer::from_deserializer(tape.deserializer()).parse()),
         Err(e) => Err(e),
     }
 }
 
-struct ValueDeserializer<'de, Value, Key>
+struct ValueDeserializer<'tape, 'de, Value, Key>
 where
     Value: ValueBuilder<'de> + From<Vec<Value>> + From<HashMap<Key, Value, ObjectHasher>> + 'de,
     Key: Hash + Eq + From<&'de str>,
 {
-    de: Deserializer<'de>,
+    de: Deserializer<'tape, 'de>,
     _marker: PhantomData<(Value, Key)>,
 }
 
-impl<'de, Value, Key> ValueDeserializer<'de, Value, Key>
+impl<'tape, 'de, Value, Key> ValueDeserializer<'tape, 'de, Value, Key>
 where
     Value: ValueBuilder<'de>
         + From<&'de str>
@@ -145,7 +145,7 @@ where
         + 'de,
     Key: Hash + Eq + From<&'de str>,
 {
-    pub fn from_deserializer(de: Deserializer<'de>) -> Self {
+    pub fn from_deserializer(de: Deserializer<'tape, 'de>) -> Self {
         Self {
             de,
             _marker: PhantomData,

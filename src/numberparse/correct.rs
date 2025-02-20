@@ -48,7 +48,7 @@ fn multiply_as_u128(a: u64, b: u64) -> (u64, u64) {
     (res as u64, (res >> 64) as u64)
 }
 
-impl<'de> Deserializer<'de> {
+impl<'a, 'de> Deserializer<'a, 'de> {
     #[allow(
         unused_unsafe,
         clippy::cast_possible_wrap,

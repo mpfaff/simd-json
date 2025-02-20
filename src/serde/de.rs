@@ -4,7 +4,7 @@ use serde_ext::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde_ext::forward_to_deserialize_any;
 use std::str;
 
-impl<'a, 'de> de::Deserializer<'de> for &'a mut Deserializer<'de>
+impl<'a, 'tape, 'de> de::Deserializer<'de> for &'a mut Deserializer<'tape, 'de>
 where
     'de: 'a,
 {
@@ -354,17 +354,17 @@ where
 }
 
 // From  https://github.com/serde-rs/json/blob/2d81cbd11302bd246db248dfb335110d1827e893/src/de.rs
-struct VariantAccess<'a, 'de> {
-    de: &'a mut Deserializer<'de>,
+struct VariantAccess<'a, 'tape, 'de> {
+    de: &'a mut Deserializer<'tape, 'de>,
 }
 
-impl<'a, 'de> VariantAccess<'a, 'de> {
-    fn new(de: &'a mut Deserializer<'de>) -> Self {
+impl<'a, 'tape, 'de> VariantAccess<'a, 'tape, 'de> {
+    fn new(de: &'a mut Deserializer<'tape, 'de>) -> Self {
         VariantAccess { de }
     }
 }
 
-impl<'de, 'a> de::EnumAccess<'de> for VariantAccess<'a, 'de> {
+impl<'de, 'tape, 'a> de::EnumAccess<'de> for VariantAccess<'a, 'tape, 'de> {
     type Error = Error;
     type Variant = Self;
 
@@ -377,7 +377,7 @@ impl<'de, 'a> de::EnumAccess<'de> for VariantAccess<'a, 'de> {
     }
 }
 
-impl<'de, 'a> de::VariantAccess<'de> for VariantAccess<'a, 'de> {
+impl<'de, 'tape, 'a> de::VariantAccess<'de> for VariantAccess<'a, 'tape, 'de> {
     type Error = Error;
 
     fn unit_variant(self) -> Result<()> {
@@ -409,20 +409,20 @@ impl<'de, 'a> de::VariantAccess<'de> for VariantAccess<'a, 'de> {
 // In order to handle commas correctly when deserializing a JSON array or map,
 // we need to track whether we are on the first element or past the first
 // element.
-struct CommaSeparated<'a, 'de: 'a> {
-    de: &'a mut Deserializer<'de>,
+struct CommaSeparated<'a, 'tape, 'de: 'a> {
+    de: &'a mut Deserializer<'tape, 'de>,
     len: usize,
 }
-impl<'a, 'de> CommaSeparated<'a, 'de> {
+impl<'a, 'tape, 'de> CommaSeparated<'a, 'tape, 'de> {
     #[cfg_attr(not(feature = "no-inline"), inline)]
-    fn new(de: &'a mut Deserializer<'de>, len: usize) -> Self {
+    fn new(de: &'a mut Deserializer<'tape, 'de>, len: usize) -> Self {
         CommaSeparated { de, len }
     }
 }
 
 // `SeqAccess` is provided to the `Visitor` to give it the ability to iterate
 // through elements of the sequence.
-impl<'de, 'a> SeqAccess<'de> for CommaSeparated<'a, 'de> {
+impl<'de, 'tape, 'a> SeqAccess<'de> for CommaSeparated<'a, 'tape, 'de> {
     type Error = Error;
 
     #[cfg_attr(not(feature = "no-inline"), inline)]
@@ -445,7 +445,7 @@ impl<'de, 'a> SeqAccess<'de> for CommaSeparated<'a, 'de> {
 
 // `MapAccess` is provided to the `Visitor` to give it the ability to iterate
 // through entries of the map.
-impl<'de, 'a> MapAccess<'de> for CommaSeparated<'a, 'de> {
+impl<'de, 'tape, 'a> MapAccess<'de> for CommaSeparated<'a, 'tape, 'de> {
     type Error = Error;
 
     #[cfg_attr(not(feature = "no-inline"), inline)]
@@ -478,8 +478,8 @@ impl<'de, 'a> MapAccess<'de> for CommaSeparated<'a, 'de> {
 
 // `MapKey` is provided to the `Visitor` to give it the ability to parse integers
 // from string as JSON keys are always string
-struct MapKey<'de: 'a, 'a> {
-    de: &'a mut Deserializer<'de>,
+struct MapKey<'tape, 'de: 'a, 'a> {
+    de: &'a mut Deserializer<'tape, 'de>,
 }
 
 macro_rules! deserialize_integer_key {
@@ -498,7 +498,7 @@ macro_rules! deserialize_integer_key {
     };
 }
 
-impl<'de, 'a> de::Deserializer<'de> for MapKey<'de, 'a> {
+impl<'tape, 'de, 'a> de::Deserializer<'de> for MapKey<'tape, 'de, 'a> {
     type Error = Error;
 
     #[cfg_attr(not(feature = "no-inline"), inline)]
